@@ -1,0 +1,7 @@
+---
+Resources:
+  ashabibucket:
+    Type: "AWS::S3::Bucket"
+    Properties: 
+      AccessControl: PublicRead
+      BucketName: ashabsultan-bucket
