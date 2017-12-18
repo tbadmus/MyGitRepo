@@ -1,0 +1,5 @@
+---
+Resources:
+  ashabibucket:
+    Type: "AWS::S3::Bucket"
+    Properties: {}
