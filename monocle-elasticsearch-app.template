@@ -1,0 +1,118 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Deploys Elasticsearch onto an existing ECS cluster"
+
+Parameters:
+  AppShortName:
+    Type: "String"
+    Description: "Application Short Name"
+
+  DeploymentID:
+    Type: "String"
+    Description: "A unique deployment identifier"
+
+  ECSCluster:
+    Type: "String"
+    Description: "ARN of ECS cluster to be used"
+
+  ECSAutoScalingGroup:
+    Type: "String"
+    Description: "The name of the ASG from the ecs-cluster deployment"
+
+  ECSServiceRole:
+    Type: "String"
+    Description: "ECS Service Role Name"
+
+  TargetGroupArn:
+    Type: "String"
+    Description: "ARN of ALB Targetgroup"
+
+  ElasticsearchSG:
+    Type: "String"
+    Description: "The Elasticsearch security group"
+
+  DockerImageURI:
+    Type: "String"
+    Description: "URI with tag for docker image to use in task definition"
+
+  MinimumMasterNodes:
+    Type: "String"
+    Description: "The minimum number of master nodes"
+
+Resources:
+  ElasticsearchTaskDefinition:
+    Type: "AWS::ECS::TaskDefinition"
+    Properties:
+      ContainerDefinitions:
+      - Name: !Sub ${AppShortName}-elasticsearch-${DeploymentID}
+        MountPoints:
+        - SourceVolume: "var-log"
+          ContainerPath: "/var/log"
+        - SourceVolume: "vol00"
+          ContainerPath: "/usr/share/elasticsearch/data"
+        Cpu: "2048"
+        Image: !Sub ${DockerImageURI}
+        Memory: "7217"
+        MemoryReservation: "7217"
+        Ulimits:
+        - Name: "nofile"
+          SoftLimit: "1024000"
+          HardLimit: "1024000"
+        PortMappings:
+        - ContainerPort: "9200"
+          HostPort: "9200"
+          Protocol: "tcp"
+        - ContainerPort: "9300"
+          HostPort: "9300"
+          Protocol: "tcp"
+        Environment:
+        - Name: "cloud.aws.region"
+          Value: !Sub ${AWS::Region}
+        - Name: "discovery.ec2.groups"
+          Value: !Sub ${ElasticsearchSG}
+        - Name: "discovery.ec2.tag.aws:autoscaling:groupName"
+          Value: !Sub ${ECSAutoScalingGroup}
+        - Name: "discovery.zen.hosts_provider"
+          Value: "ec2"
+        - Name: "discovery.zen.minimum_master_nodes"
+          Value: !Sub ${MinimumMasterNodes}
+        - Name: "ES_JAVA_OPTS"
+          Value: "-Xms4g -Xmx4g"
+        - Name: "network.publish_host"
+          Value: "_ec2:privateIp_"
+        - Name: "searchguard.ssl.http.enabled"
+          Value: "false"
+        - Name: "xpack.security.enabled"
+          Value: "false"
+      Volumes:
+      - Name: "var-log"
+      - Name: "vol00"
+        Host:
+          SourcePath: "/opt/vol00"
+
+  ElasticsearchService:
+    Type: "AWS::ECS::Service"
+    Properties: 
+      Cluster: !Sub ${ECSCluster}
+      DeploymentConfiguration:
+        MinimumHealthyPercent: "100"
+        MaximumPercent: "200"
+      DesiredCount: "4"
+      PlacementConstraints:
+      - Type: "distinctInstance"
+      LoadBalancers:
+      - TargetGroupArn:
+          !Sub ${TargetGroupArn}
+        ContainerPort: "9200"
+        ContainerName: !Sub ${AppShortName}-elasticsearch-${DeploymentID}
+      Role: !Sub ${ECSServiceRole}
+      ServiceName: "elasticsearch"
+      TaskDefinition: !Sub ${ElasticsearchTaskDefinition}
+
+Outputs:
+  ElasticsearchTaskDefinitionARN:
+    Description: "Elasticsearch Task Definition ARN"
+    Value: !Ref ElasticsearchTaskDefinition
+
+  ElasticsearchServiceARN:
+    Description: "ElasticSearch Service ARN"
+    Value: !Ref ElasticsearchService

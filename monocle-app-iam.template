@@ -1,0 +1,131 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Creates IAM roles for Monocle services"
+
+Parameters:
+  AppS3Bucket:
+    Type: String
+    Description: The name of the monocle S3 bucket
+
+  HostedZoneID:
+    Type: "String"
+    Description: "Hosted Zone ID for monocle domain name"
+
+Resources:
+  GrafanaTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ecs-tasks.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: grafana-assume-role
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - sts:AssumeRole
+            Resource:
+            - '*'
+
+  OpenTSDBTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ecs-tasks.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+
+  KafkaTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ecs-tasks.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+      - PolicyName: kafka-ecs-tasks
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - s3:List*
+            Resource:
+            - !Sub arn:aws:s3:::${AppS3Bucket}*
+          - Effect: Allow
+            Action:
+            - s3:List*
+            - s3:Get*
+            - s3:Put*
+            - s3:Delete*
+            Resource:
+            - !Sub arn:aws:s3:::${AppS3Bucket}/kafka/*
+          - Effect: Allow
+            Action:
+            - ec2:DescribeInstances
+            Resource:
+            - '*'
+          - Effect: Allow
+            Action:
+            - route53:ChangeResourceRecordSets
+            Resource:
+            - !Sub arn:aws:route53:::hostedzone/${HostedZoneID}
+
+  HadoopRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+
+Outputs:
+  GrafanaTaskRole:
+    Value: !Ref 'GrafanaTaskRole'
+
+  GrafanaTaskRoleArn:
+    Value: !GetAtt GrafanaTaskRole.Arn
+
+  OpenTSDBTaskRole:
+    Value: !Ref 'OpenTSDBTaskRole'
+
+  OpenTSDBTaskRoleArn:
+    Value: !GetAtt OpenTSDBTaskRole.Arn
+
+  KafkaTaskRole:
+    Value: !Ref 'KafkaTaskRole'
+
+  KafkaTaskRoleArn:
+    Value: !GetAtt KafkaTaskRole.Arn
+
+  HadoopRole:
+    Value: !Ref 'HadoopRole'
+
+  HadoopRoleArn:
+    Value: !GetAtt HadoopRole.Arn

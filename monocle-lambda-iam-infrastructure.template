@@ -1,0 +1,74 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Deploys the IAM Role for the Monocle Lambda.
+
+Parameters:
+  CloudtrailBucket:
+    Description: The Cloudtrail bucket to monitor. (Can be wildcarded.)
+    Type       : String
+
+Resources:
+  MonocleLambdaFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+
+  MonocleLambdaFunctionPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: MonocleLambdaFunctionPolicy
+      Roles:
+        - !Ref MonocleLambdaFunctionRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action:
+              - s3:Get*
+            Resource:
+              - !Sub "arn:aws:s3:::${CloudtrailBucket}/*"
+            Effect: Allow
+
+  MonocleManageLambdaFunctionPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: MonocleManageLambdaFunctionPolicy
+      Roles:
+        - !Ref MonocleLambdaFunctionRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action:
+              - ec2:DetachNetworkInterface
+            Resource: '*'
+            Effect: Allow
+          - Action:
+              - lambda:Get*
+              - lambda:AddPermission
+              - lambda:RemovePermission
+            Resource:
+              - "arn:aws:lambda:*:*:*monocle*"
+            Effect: Allow
+          - Action:
+              - sns:Subscribe
+              - sns:Unsubscribe
+            Resource: 'arn:aws:sns:*:*:infor-cloudtrail'
+            Effect: Allow
+
+Outputs:
+  MonocleLambdaFunctionRole:
+    Description: The logical identifier of the Lambda Function Role.
+    Value      : !Ref MonocleLambdaFunctionRole
+
+  MonocleLambdaFunctionRoleArn:
+    Description: The Amazon Resource Identifier (ARN) of the Lambda Function Role.
+    Value      : !GetAtt MonocleLambdaFunctionRole.Arn

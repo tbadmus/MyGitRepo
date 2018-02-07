@@ -1,0 +1,85 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+  AppShortName:
+    Type: "String"
+    Description: "Application Short Name"
+
+  DeploymentID:
+    Type: "String"
+    Description: "A unique deployment identifier"
+
+  OwnerEmail:
+    Type: "String"
+    Description: "Owner email address"
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: "VPC Id"
+
+  ApplicationSubnets:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: "A comma separated list of subnet IDs"
+
+  SecurityGroupIDs:
+    Type: List<AWS::EC2::SecurityGroup::Id>
+    Description: "A comma separated list of Security Group IDs"
+
+  SSLCertificate:
+    Type: "String"
+    Description: "SSL certificate for load balancer"
+
+Resources:
+  ElasticsearchApplicationLoadBalancer:
+    Type: "AWS::ElasticLoadBalancingV2::LoadBalancer"
+    Properties:
+      LoadBalancerAttributes:
+      - Key: "idle_timeout.timeout_seconds"
+        Value: "300"
+      Name: !Sub ${AppShortName}-elasticsearch-${DeploymentID}
+      Scheme: "internal"
+      Subnets: !Ref ApplicationSubnets
+      SecurityGroups: !Ref SecurityGroupIDs
+      Tags:
+      - Key: "Owner"
+        Value: !Sub ${OwnerEmail}
+
+  ElasticsearchALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+      - Type: "forward"
+        TargetGroupArn:
+          Ref: ElasticsearchTargetGroup
+      LoadBalancerArn:
+        Ref: ElasticsearchApplicationLoadBalancer
+      Port: "9200"
+      Protocol: "HTTPS"
+      Certificates:
+      - CertificateArn: !Sub ${SSLCertificate}
+
+  ElasticsearchTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub ${AppShortName}-elasticsearch-${DeploymentID}
+      Port: "9200"
+      Protocol: "HTTP"
+      VpcId: !Sub ${VpcId}
+      HealthCheckProtocol: "HTTP"
+      HealthCheckPath: "/"
+      HealthyThresholdCount: "5"
+      UnhealthyThresholdCount: "2"
+      HealthCheckTimeoutSeconds: "5"
+      HealthCheckIntervalSeconds: "30"
+      Matcher:
+        HttpCode: "200,401"
+      Tags:
+      - Key: "Owner"
+        Value: !Sub ${OwnerEmail}
+
+Outputs:
+  ElasticsearchApplicationLoadBalancer:
+    Value: !Sub ${ElasticsearchApplicationLoadBalancer}
+
+  ElasticsearchTargetGroup:
+    Value: !Sub ${ElasticsearchTargetGroup}

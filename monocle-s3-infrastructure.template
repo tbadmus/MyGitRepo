@@ -1,0 +1,19 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Create an S3 Bucket for Monocle"
+
+Parameters:
+  S3BucketName:
+    Type: String
+    Description: Name of the Monocle S3 bucket to create
+
+Resources:
+  MonocleS3Bucket:
+    Type: "AWS::S3::Bucket"
+    Properties: 
+      AccessControl: BucketOwnerFullControl
+      BucketName: !Sub ${S3BucketName}
+      VersioningConfiguration:
+        Status: Enabled
+Outputs:
+  S3BucketName:
+    Value: !Ref 'MonocleS3Bucket'

@@ -1,0 +1,118 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Creates an RDS instance for Monocle"
+
+Parameters:
+  DeploymentPrefix:
+    Type: String
+    Description: "An optional prefix to use on resource names.  Useful in environments with specific naming requirements."
+    Default: ""
+
+  DeploymentSuffix:
+    Type: String
+    Description: "An optional suffix to use on resource names.  Useful when deploying multiple deployments of the same infrastructure."
+    Default: ""
+
+  OwnerEmail:
+    Type: String
+    Description: "The email address of a person or group responsible for this RDS."
+
+  TeamTag:
+    Type: String
+    Description: "The Team tag applied to applicable resources for this application."
+
+  HanoverSchedule:
+    Type: String
+    Description: "The Hanover schedule to apply to instances in non-prod environments."
+
+  VPCSecurityGroups:
+    Type: String
+    Description: "A list of the VPC security group IDs to assign to the DB instance."
+
+  ProductSubnetIds:
+    Type: String
+    Description: "The EC2 Subnet IDs to use for the DB Subnet Group."
+
+  DBInstanceClass:
+    Type: String
+    Description: "The name of the compute and memory capacity classes of the DB instance."
+
+  AllocatedStorage:
+    Type: Number
+    Description: "The allocated storage size for the DB specified in gigabytes."
+
+  BackupRetentionPeriod:
+    Type: Number
+    Description: "The number of days to keep backup snapshots."
+
+  DBEngineVersion:
+    Type: String
+    Description: "The version number of the MySQL database engine that the DB instance uses. Ex: 5.7"
+
+  MonocleDbName:
+    Type: String
+    Description: "The name of the DB instance."
+    Default: "grafana"
+
+  MonocleDbUserName:
+    Type: String
+    Description: "The master user name for the DB instance."
+    NoEcho: true
+
+  MonocleDbPassword:
+    Type: String
+    Description: "The master password for the DB instance."
+    NoEcho: true
+
+Resources:
+  MonocleSubnetGroup:
+    Type: "AWS::RDS::DBSubnetGroup"
+    Properties:
+      DBSubnetGroupDescription: "The DB Subnet Group."
+      SubnetIds: !Split [ ",", !Ref ProductSubnetIds ]
+      Tags:
+      - Key: Team
+        Value: !Sub ${TeamTag}
+
+  MonocleDbInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: !Sub ${AllocatedStorage}
+      AutoMinorVersionUpgrade: false
+      BackupRetentionPeriod: !Sub ${BackupRetentionPeriod}
+      CopyTagsToSnapshot: true
+      DBInstanceClass: !Sub ${DBInstanceClass}
+      DBInstanceIdentifier: !Sub ${DeploymentPrefix}monocle${DeploymentSuffix}
+      DBName: !Sub ${MonocleDbName}
+      DBSubnetGroupName: !Ref MonocleSubnetGroup
+      Engine: MySQL
+      EngineVersion: !Sub ${DBEngineVersion}
+      MasterUsername: !Sub ${MonocleDbUserName}
+      MasterUserPassword: !Sub ${MonocleDbPassword}
+      MultiAZ: true
+      Tags:
+      - Key: Name
+        Value: !Sub ${DeploymentPrefix}monocle${DeploymentSuffix}
+      - Key: Product
+        Value: !Sub monocle
+      - Key: Service
+        Value: !Sub cts:monocle
+      - Key: Owner
+        Value: !Sub ${OwnerEmail}
+      - Key: Schedule
+        Value: !Sub ${HanoverSchedule}
+      - Key: Team
+        Value: !Sub ${TeamTag}
+      VPCSecurityGroups: !Split [ ",", !Ref VPCSecurityGroups ]
+
+Outputs:
+  MonocleDbName:
+    Value: !Ref 'MonocleDbName'
+
+  MonocleDbInstance:
+    Value: !Ref 'MonocleDbInstance'
+
+  MonocleDbHostEndpointAddress:
+    Value: !GetAtt 'MonocleDbInstance.Endpoint.Address'
+
+  MonocleDbHostEndpointPort:
+    Value: !GetAtt 'MonocleDbInstance.Endpoint.Port'

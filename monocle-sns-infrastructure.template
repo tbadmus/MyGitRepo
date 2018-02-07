@@ -1,0 +1,64 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Deploys an SNS topic and SNS topic policy
+
+Parameters:
+  CloudtrailBucket:
+    Description: The Cloudtrail bucket to monitor (Can be wildcarded if using multiple buckets).
+    Type       : String
+
+  MonocleAccountIds:
+    Description: The Monocle AWS Account IDs.
+    Type       : String
+
+Conditions:
+  AdditionalAccounts: !Not [ !Equals [ !Ref MonocleAccountIds, "" ] ]
+
+Resources:
+  MonocleCloudtrailTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: infor-cloudtrail
+      TopicName: infor-cloudtrail
+
+  MonocleCloudtrailTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref MonocleCloudtrailTopic
+      PolicyDocument:
+        Id       : MonocleCloudtrailTopicPolicy
+        Version  : '2012-10-17'
+        Statement:
+          - Sid      : AllowMonocleToSubscribe
+            Effect   : Allow
+            Principal:
+              AWS: !If
+                - AdditionalAccounts
+                - !Split [ ",", !Sub "${AWS::AccountId},${MonocleAccountIds}" ]
+                - !Sub "${AWS::AccountId}"
+            Action:
+              - sns:Receive
+              - sns:Subscribe
+            Resource: !Ref MonocleCloudtrailTopic
+
+          - Sid      : AllowTopicManagement
+            Effect   : Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Action:
+              - sns:AddPermission
+              - sns:ListSubscriptionsByTopic
+              - sns:Publish
+              - sns:DeleteTopic
+              - sns:SetTopicAttributes
+              - sns:RemovePermission
+              - sns:GetTopicAttributes
+            Resource : !Ref MonocleCloudtrailTopic
+            Condition:
+              ArnLike:
+                AWS:SourceArn: !Sub arn:aws:s3:*:*:${CloudtrailBucket}
+
+Outputs:
+  MonocleCloudtrailTopic:
+    Description: The SNS topic for Monocle to subscribe to.
+    Value      : !Ref MonocleCloudtrailTopic

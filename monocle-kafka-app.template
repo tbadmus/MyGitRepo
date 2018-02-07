@@ -1,0 +1,126 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Deploys Kafka onto an existing ECS cluster"
+
+Parameters:
+  DeploymentID:
+    Type: "String"
+    Description: "A unique deployment identifier"
+
+  DockerImageURI:
+    Type: "String"
+    Description: "URI with tag for docker image to use in task definition"
+
+  DesiredTaskCount:
+    Type: "String"
+    Description: "Number of docker container tasks to deploy"
+
+  ECSCluster:
+    Type: "String"
+    Description: "ARN of ECS cluster to be used"
+
+  HostedZoneID:
+    Type: "String"
+    Description: "Hosted Zone ID from monocle product stack"
+
+  KafkaTaskRole:
+    Type: "String"
+    Description: "Kafka Task Role Name"
+
+  SubDomainName:
+    Type: "String"
+    Description: "Sub Domain Name from monocle product stack"
+
+  S3Bucket:
+    Type: "String"
+    Description: "AWS S3 Bucket for application configuration data"
+
+  S3Prefix:
+    Type: "String"
+    Description: "AWS S3 Prefix for Kafka configuration data"
+
+Resources:
+  KafkaTaskDefinition:
+    Type: "AWS::ECS::TaskDefinition"
+    Properties:
+      ContainerDefinitions:
+        - Name: !Sub infra-monocle-kafka-${DeploymentID}
+          MountPoints:
+          - SourceVolume: "kf-data"
+            ContainerPath: "/var/lib/kafka/data"
+          - SourceVolume: "kf-log"
+            ContainerPath: "/var/log/kafka"
+          Cpu: "1024"
+          Image: !Sub ${DockerImageURI}
+          Memory: "7217"
+          MemoryReservation: "7217"
+          Environment:
+          - Name: "HOSTED_ZONE_ID"
+            Value: !Sub ${HostedZoneID}
+          - Name: "DOMAIN_NAME"
+            Value: !Sub ${SubDomainName}
+          - Name: "KAFKA_AUTO_CREATE_TOPICS_ENABLE"
+            Value: "false"
+          - Name: "KAFKA_DEFAULT_REPLICATION_FACTOR"
+            Value: "3"
+          - Name: "KAFKA_NUM_PARTITIONS"
+            Value: "3"
+          - Name: "KAFKA_LOG_RETENTION_HOURS"
+            Value: "120"
+          - Name: "KAFKA_SECURITY_INTER_BROKER_PROTOCOL"
+            Value: "SASL_PLAINTEXT"
+          - Name: "KAFKA_SSL_CLIENT_AUTH"
+            Value: "required"
+          - Name: "KAFKA_SASL_ENABLED_MECHANISMS"
+            Value: "PLAIN"
+          - Name: "KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL"
+            Value: "PLAIN"
+          - Name: "KAFKA_SSL_KEYSTORE_FILENAME"
+            Value: "kafka_keystore.jks"
+          - Name: "KAFKA_SSL_KEY_CREDENTIALS"
+            Value: "kafka_sslkey_creds"
+          - Name: "KAFKA_SSL_KEYSTORE_CREDENTIALS"
+            Value: "kafka_keystore_creds"
+          - Name: "KAFKA_SSL_TRUSTSTORE_FILENAME"
+            Value: "kafka_truststore.jks"
+          - Name: "KAFKA_SSL_TRUSTSTORE_CREDENTIALS"
+            Value: "kafka_truststore_creds"
+          - Name: "KAFKA_OPTS"
+            Value: "-Djava.security.auth.login.config=/etc/kafka/secrets/kafka_server_jaas.conf"
+          - Name: "KAFKA_JMX_PORT"
+            Value: "9990"
+          - Name: "LISTENERS"
+            Value: "PLAINTEXT://:9092,SASL_SSL://:9093,SASL_PLAINTEXT://:9094"
+          - Name: "S3_BUCKET"
+            Value: !Sub ${S3Bucket}
+          - Name: "S3_PREFIX"
+            Value: !Sub ${S3Prefix}
+      NetworkMode: host
+      TaskRoleArn: !Sub ${KafkaTaskRole}
+      Volumes:
+        - Name: "kf-data"
+          Host:
+            SourcePath: "/opt/kf/kf-data"
+        - Name: "kf-log"
+          Host:
+            SourcePath: "/opt/kf/kf-log"
+  KafkaService:
+    Type: "AWS::ECS::Service"
+    Properties:
+      Cluster: !Sub ${ECSCluster}
+      DeploymentConfiguration:
+        MinimumHealthyPercent: "100"
+        MaximumPercent: "200"
+      DesiredCount: !Sub ${DesiredTaskCount}
+      PlacementConstraints:
+      - Type: "distinctInstance"
+      ServiceName: "kafka"
+      TaskDefinition: !Sub ${KafkaTaskDefinition}
+
+Outputs:
+  KafkaTaskDefinitionARN:
+    Description: "Kafka Task Definition ARN"
+    Value: !Ref KafkaTaskDefinition
+
+  KafkaServiceARN:
+    Description: "Kafka Service ARN"
+    Value: !Ref KafkaService

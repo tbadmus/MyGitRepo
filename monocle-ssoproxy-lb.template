@@ -1,0 +1,113 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+  DeploymentPrefix:
+    Type: "String"
+    Description: "An optional prefix to use on resource names"
+
+  DeploymentSuffix:
+    Type: "String"
+    Description: "An optional suffix to use on resource names"
+
+  OwnerEmail:
+    Type: "String"
+    Description: "Owner email address"
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: "VPC Id"
+
+  TeamTag:
+    Type: "String"
+    Description: "The Team tag for the application"
+
+  ApplicationSubnets:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: "A comma separated list of subnet IDs"
+
+  PublicLoadBalancerSecurityGroupId:
+    Type: "String"
+    Description: "Public Load Balancer Security Group Id"
+
+  PublicSubnets:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: "A comma separated list of subnet IDs"
+
+  PublicLoadBalancerSecurityGroupId:
+    Type: "String"
+    Description: "Public Load Balancer Security Group Id"
+
+  SSLCertificate:
+    Type: "String"
+    Description: "SSL certificate for load balancer"
+
+  GrafanaSG:
+    Type: "String"
+    Description: "A security group"
+
+Resources:
+  SSOProxyApplicationLoadBalancer:
+    Type: "AWS::ElasticLoadBalancingV2::LoadBalancer"
+    Properties:
+      Name: !Sub ${DeploymentPrefix}monocle-ssoproxy${DeploymentSuffix}
+      Scheme: "internet-facing"
+      Subnets: !Ref PublicSubnets
+      SecurityGroups:
+      - !Sub '${PublicLoadBalancerSecurityGroupId}'
+      - !Sub '${GrafanaSG}'
+      Tags:
+      - Key: "Name"
+        Value: "ssoproxy-alb"
+      - Key: "Product"
+        Value: "monocle"
+      - Key: "Service"
+        Value: "ssoproxy:alb"
+      - Key: "Owner"
+        Value: !Sub ${OwnerEmail}
+      - Key: "Team"
+        Value: !Sub ${TeamTag}
+      - Key: "Network"
+        Value: "public"
+
+  SSOProxyALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+      - Type: "forward"
+        TargetGroupArn:
+          Ref: SSOProxyTargetGroup
+      LoadBalancerArn:
+        Ref: SSOProxyApplicationLoadBalancer
+      Port: "443"
+      Protocol: "HTTPS"
+      Certificates:
+      - CertificateArn: !Sub ${SSLCertificate}
+
+  SSOProxyTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub ${DeploymentPrefix}monocle-ssoproxy${DeploymentSuffix}
+      Port: "443"
+      Protocol: "HTTPS"
+      VpcId: !Sub ${VpcId}
+      HealthCheckProtocol: "HTTPS"
+      HealthCheckPath: "/"
+      HealthyThresholdCount: "5"
+      UnhealthyThresholdCount: "2"
+      HealthCheckTimeoutSeconds: "5"
+      HealthCheckIntervalSeconds: "30"
+      Matcher:
+        HttpCode: "200,401,302,303"
+      Tags:
+      - Key: "Owner"
+        Value: !Sub ${OwnerEmail}
+      TargetGroupAttributes:
+      - Key: "stickiness.enabled"
+        Value: "true"
+
+Outputs:
+  SSOProxyApplicationLoadBalancer:
+    Value: !Sub ${SSOProxyApplicationLoadBalancer}
+
+  SSOProxyTargetGroup:
+    Value: !Sub ${SSOProxyTargetGroup}
