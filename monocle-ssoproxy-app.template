@@ -1,0 +1,101 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Deploys SSO Proxy onto an existing ECS cluster"
+
+Parameters:
+  DeploymentPrefix:
+    Type: "String"
+    Description: "An optional prefix to use on resource names"
+
+  DeploymentSuffix:
+    Type: "String"
+    Description: "An optional suffix to use on resource names"
+
+  ECSCluster:
+    Type: "String"
+    Description: "ARN of ECS cluster to be used"
+
+  ECSAutoScalingGroup:
+    Type: "String"
+    Description: "The name of the ASG from the ecs-cluster deployment"
+
+  ECSServiceRole:
+    Type: "String"
+    Description: "ECS Service Role Name"
+
+  TargetGroupArn:
+    Type: "String"
+    Description: "ARN of ALB Targetgroup"
+
+  DockerImageURI:
+    Type: "String"
+    Description: "URI with tag for docker image to use in task definition"
+
+  GrafanaDNSName:
+    Type: "String"
+    Description: "Public Domain Name given to the Grafana service"
+
+  GrafanaPrivateHost:
+    Type: "String"
+    Description: "Domain Name for internal Grafana load balancer"
+
+  SAMLMetadataS3Path:
+    Type: "String"
+    Description: "Path on S3 pointing to SAML metadata"
+
+  S3BucketName:
+    Type: "String"
+    Description: "S3 bucket where SAML metadata is stored"
+
+
+Resources:
+  SSOProxyTaskDefinition:
+    Type: "AWS::ECS::TaskDefinition"
+    Properties:
+      ContainerDefinitions:
+      - Name: !Sub ${DeploymentPrefix}monocle-ssoproxy${DeploymentSuffix}
+        EntryPoint:
+        - "./entry-point.sh"
+        Cpu: "256"
+        Image: !Sub ${DockerImageURI}
+        Memory: "2048"
+        MemoryReservation: "1024"
+        PortMappings:
+        - ContainerPort: "443"
+          HostPort: "0"
+          Protocol: "tcp"
+        Environment:
+        - Name: "GF_SERVER_ROOT_URL"
+          Value: !Join [ '', [ "https://", !Ref 'GrafanaDNSName' ] ]
+        - Name: "GRAFANA_PUBLIC_DNS"
+          Value: !Sub ${GrafanaDNSName}
+        - Name: "GRAFANA_PRIVATE_DNS"
+          Value: !Sub ${GrafanaPrivateHost}
+        - Name: "SAML_METADATA_S3_LOCATION"
+          Value: !Join [ '', ["s3://", !Ref 'S3BucketName', !Ref 'SAMLMetadataS3Path'] ]
+
+
+  SSOProxyService:
+    Type: "AWS::ECS::Service"
+    Properties:
+      Cluster: !Sub ${ECSCluster}
+      DeploymentConfiguration:
+        MinimumHealthyPercent: "50"
+        MaximumPercent: "200"
+      DesiredCount: "1"
+      LoadBalancers:
+      - TargetGroupArn:
+          !Sub ${TargetGroupArn}
+        ContainerPort: "443"
+        ContainerName: !Sub ${DeploymentPrefix}monocle-ssoproxy${DeploymentSuffix}
+      Role: !Sub ${ECSServiceRole}
+      ServiceName: "sso-proxy"
+      TaskDefinition: !Sub ${SSOProxyTaskDefinition}
+
+Outputs:
+  SSOProxyTaskDefinitionArn:
+    Description: "SSO Reverse Proxy Task Definition ARN"
+    Value: !Ref SSOProxyTaskDefinition
+
+  SSOProxyServiceArn:
+    Description: "SSO Reverse Proxy Service ARN"
+    Value: !Ref SSOProxyService

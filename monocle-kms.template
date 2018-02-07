@@ -1,0 +1,63 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Create KMS key for Monocle apps.
+
+Parameters:
+  AppShortName:
+    Type: String
+    Description: The assigned shortname for the application.
+
+  DeploymentID:
+    Type: String
+    Description: Unique deployment identifier.
+
+  KmsAdminRoleArn:
+    Type: String
+    Description: Admin role to administer the KMS key.
+
+  GrafanaTaskRoleArn:
+    Type: String
+    Description: The grafana service role ARN.
+
+Resources:
+  CMKAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Join [ "", [ "alias/", !Ref AppShortName, "-", !Ref DeploymentID ] ]
+      TargetKeyId:
+        Ref: CMK
+
+  CMK:
+    Type: AWS::KMS::Key
+    Properties: 
+      Description: Monocle Master Key
+      Enabled: true
+      EnableKeyRotation: false
+      KeyPolicy:
+        Version: 2012-10-17
+        Statement:
+        - Sid: Allow administration of the key
+          Effect: Allow
+          Principal:
+            AWS:
+              Ref: KmsAdminRoleArn
+          Action:
+          - kms:*
+          Resource: "*"
+        - Sid: Allow use of the key
+          Effect: Allow
+          Principal:
+            AWS:
+              Ref: GrafanaTaskRoleArn
+          Action:
+          - kms:Encrypt
+          - kms:Decrypt
+          - kms:GenerateDataKey
+          Resource: "*"
+
+Outputs:
+  KmsKeyID:
+    Value: !Ref CMK
+
+  KmsKeyIDArn:
+    Value:
+      !GetAtt CMK.Arn

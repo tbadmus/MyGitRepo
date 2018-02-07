@@ -1,0 +1,183 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Deploys grafana onto an existing ECS cluster"
+
+Parameters:
+  DeploymentPrefix:
+    Type: "String"
+    Description: "An optional prefix to use on resource names"
+
+  DeploymentSuffix:
+    Type: "String"
+    Description: "An optional suffix to use on resource names"
+
+  ECSCluster:
+    Type: "String"
+    Description: "ARN of ECS cluster to be used"
+
+  ECSServiceRole:
+    Type: "String"
+    Description: "ECS Service Role Name"
+
+  GrafanaTaskRole:
+    Type: "String"
+    Description: "Grafana Service Role Name"
+
+  TargetGroupArn:
+    Type: "String"
+    Description: "ARN of ALB Targetgroup"
+
+  DockerImageURI:
+    Type: "String"
+    Description: "URI with tag for docker image to use in task definition"
+
+  SmtpSmartHost:
+    Type: "String"
+    Description: "The URL of the SMTP Smarthost"
+
+  SmtpFromAddress:
+    Type: "String"
+    Description: "The from field displayed on emails from grafana"
+
+  SmtpFromName:
+    Type: "String"
+    Description: "The name of the application generating the email alert"
+
+  GrafanaDnsName:
+    Type: "String"
+    Description: "DNS Name given to the Grafana service"
+
+  GrafanaDbHost:
+    Type: "String"
+    Description: "The hostname of the database"
+
+  GrafanaDbPort:
+    Type: "Number"
+    Description: "The port number of the database"
+
+  GrafanaDbName:
+    Type: "String"
+    Description: "The name of the Grafana database on the database server"
+
+  GrafanaDbUserName:
+    Type: "String"
+    Description: "The KMS encrypted username of the database user that Grafana will connect to 'GrafanaDbName' with"
+
+  GrafanaDbUserNameEncryptionContext:
+    Type: "String"
+
+  GrafanaDbPassword:
+    Type: "String"
+    Description: "The KMS encrypted password of the database user that Grafana will connect to 'GrafanaDbName' with"
+
+  GrafanaDbPasswordEncryptionContext:
+    Type: "String"
+
+  GrafanaAdminUserName:
+    Type: "String"
+
+  GrafanaAdminUserNameEncryptionContext:
+    Type: "String"
+
+  GrafanaAdminPassword:
+    Type: "String"
+
+  GrafanaAdminPasswordEncryptionContext:
+    Type: "String"
+
+Resources:
+  GrafanaTaskDefinition:
+    Type: "AWS::ECS::TaskDefinition"
+    Properties:
+      ContainerDefinitions:
+      - Name: !Sub ${DeploymentPrefix}monocle-grafana${DeploymentSuffix}
+        EntryPoint:
+        - "/root/startup.sh"
+        MountPoints:
+        - SourceVolume: "var-log"
+          ContainerPath: "/var/log"
+        Cpu: "256"
+        Image: !Sub ${DockerImageURI}
+        Memory: "2048"
+        MemoryReservation: "2048"
+        Ulimits:
+        - Name: "nofile"
+          SoftLimit: "1024000"
+          HardLimit: "1024000"
+        PortMappings:
+        - ContainerPort: "3000"
+          HostPort: "0"
+          Protocol: "tcp"
+        Environment:
+        - Name: "GF_SERVER_ROOT_URL"
+          Value: !Join [ '', [ "https://", !Ref 'GrafanaDnsName' ] ]
+        - Name: "GF_SERVER_DOMAIN"
+          Value: !Sub ${GrafanaDnsName}
+        - Name: "GF_SMTP_ENABLED"
+          Value: "true"
+        - Name: "GF_SMTP_HOST"
+          Value: !Sub ${SmtpSmartHost}
+        - Name: "GF_SMTP_FROM_ADDRESS"
+          Value: !Sub ${SmtpFromAddress}
+        - Name: "GF_SMTP_FROM_NAME"
+          Value: !Sub ${SmtpFromName}
+        - Name: "GF_EMAILS_WELCOME_EMAIL_ON_SIGN_UP"
+          Value: "true"
+        - Name: "GF_AUTH_PROXY_ENABLED"
+          Value: "true"
+        - Name: "GF_AUTH_PROXY_HEADER_NAME"
+          Value: "X-WEBAUTH-USER"
+        - Name: "GF_AUTH_PROXY_HEADER_PROPERTY"
+          Value: "email"
+        - Name: "GF_AUTH_PROXY_AUTO_SIGN_UP"
+          Value: "true"
+        - Name: "GF_DATABASE_TYPE"
+          Value: "mysql"
+        - Name: "GF_DATABASE_HOST"
+          Value: !Join [ '', [ !Ref 'GrafanaDbHost', ":", !Ref 'GrafanaDbPort' ] ]
+        - Name: "GF_DATABASE_NAME"
+          Value: !Sub ${GrafanaDbName}
+        - Name: "GrafanaDbUserName"
+          Value: !Sub ${GrafanaDbUserName}
+        - Name: "GrafanaDbUserNameEncryptionContext"
+          Value: !Sub ${GrafanaDbUserNameEncryptionContext}
+        - Name: "GrafanaDbPassword"
+          Value: !Sub ${GrafanaDbPassword}
+        - Name: "GrafanaDbPasswordEncryptionContext"
+          Value: !Sub ${GrafanaDbPasswordEncryptionContext}
+        - Name: "GrafanaAdminUserName"
+          Value: !Sub ${GrafanaAdminUserName}
+        - Name: "GrafanaAdminUserNameEncryptionContext"
+          Value: !Sub ${GrafanaAdminUserNameEncryptionContext}
+        - Name: "GrafanaAdminPassword"
+          Value: !Sub ${GrafanaAdminPassword}
+        - Name: "GrafanaAdminPasswordEncryptionContext"
+          Value: !Sub ${GrafanaAdminPasswordEncryptionContext}
+      TaskRoleArn: !Sub ${GrafanaTaskRole}
+      Volumes:
+      - Name: "var-log"
+
+  GrafanaService:
+    Type: "AWS::ECS::Service"
+    Properties:
+      Cluster: !Sub ${ECSCluster}
+      DeploymentConfiguration:
+        MinimumHealthyPercent: "50"
+        MaximumPercent: "200"
+      DesiredCount: "1"
+      LoadBalancers:
+      - TargetGroupArn:
+          !Sub ${TargetGroupArn}
+        ContainerPort: "3000"
+        ContainerName: !Sub ${DeploymentPrefix}monocle-grafana${DeploymentSuffix}
+      Role: !Sub ${ECSServiceRole}
+      ServiceName: "grafana"
+      TaskDefinition: !Sub ${GrafanaTaskDefinition}
+
+Outputs:
+  GrafanaTaskDefinitionArn:
+    Description: "Grafana Task Definition ARN"
+    Value: !Ref GrafanaTaskDefinition
+
+  GrafanaServiceArn:
+    Description: "Grafana Service ARN"
+    Value: !Ref GrafanaService

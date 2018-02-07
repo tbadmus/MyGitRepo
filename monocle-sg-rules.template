@@ -1,0 +1,139 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: Security Group Rules for Monocle
+
+Parameters:
+  ElasticSearchSG:
+    Description: The Security Group ID of elasticsearch security group.
+    Type: String
+  HadoopSG:
+    Description: The Security Group ID of the VPC Private ELB security group.
+    Type: String
+  KafkaSG:
+    Description: The Security Group ID of kafka security group.
+    Type: String
+  ZookeeperSG:
+    Description: The Security Group ID of zookeeper security group.
+    Type: String
+  WebTierSG:
+    Description: The Security Group ID of monocle web security group.
+    Type: String
+  PrivateLoadBalancerSecurityGroupId:
+    Description: The Security Group ID of the private load balancers security group.
+    Type: String
+
+Resources:
+
+    ############################################################################
+    ### KafkaSG - Allow internet clients to Kafka brokers over 9093 SASL_SSL
+    ############################################################################
+    9093toKafkaBrokersfmInternet:
+      Type: AWS::EC2::SecurityGroupIngress
+      Properties:
+        GroupId:
+          Ref: KafkaSG
+        IpProtocol: tcp
+        FromPort: '9093'
+        ToPort: '9093'
+        CidrIp: 0.0.0.0/0
+
+    ############################################################################
+    ### KafkaSG - Allow inter broker communication over 9094 SASL_PLAINTEXT
+    ############################################################################
+    9094tofmKafkaBrokers:
+      Type: AWS::EC2::SecurityGroupIngress
+      Properties:
+        GroupId:
+          Ref: KafkaSG
+        IpProtocol: tcp
+        FromPort: '9094'
+        ToPort: '9094'
+        SourceSecurityGroupId:
+          Ref: KafkaSG
+     
+    ############################################################################
+    ### KafkaSG - Allow monitoring client to connect to Kafka brokers 
+    ###           over 9092 plaintext
+    ############################################################################
+    9092toKafkaBrokersfmKafkaMonitor:
+      Type: AWS::EC2::SecurityGroupIngress
+      Properties:
+        GroupId:
+          Ref: KafkaSG
+        IpProtocol: tcp
+        FromPort: '9092'
+        ToPort: '9092'
+        SourceSecurityGroupId:
+          Ref: KafkaSG          
+
+    ############################################################################
+    ### KafkaSG - Allow monitoring client to connect to Kafka brokers over 9990 
+    ###           for JMX
+    ############################################################################
+    9990toKafkaBrokersfmKafkaMonitor:
+      Type: AWS::EC2::SecurityGroupIngress
+      Properties:
+        GroupId:
+          Ref: KafkaSG
+        IpProtocol: tcp
+        FromPort: '9990'
+        ToPort: '9990'
+        SourceSecurityGroupId:
+          Ref: KafkaSG
+
+    ############################################################################
+    ### ZookeeperSG - Allow Kafka brokers & monitoring client to connect zookeeper
+    ###               over 2181
+    ############################################################################
+    2181toZookeperfmKafka:
+      Type: AWS::EC2::SecurityGroupIngress
+      Properties:
+        GroupId:
+          Ref: ZookeeperSG
+        IpProtocol: tcp
+        FromPort: '2181'
+        ToPort: '2181'
+        SourceSecurityGroupId:
+          Ref: KafkaSG  
+
+    ############################################################################
+    ### ZookeeperSG - Allow follower zookeeper to connect to leader over 2888
+    ############################################################################
+    2888tofmZookeper:
+      Type: AWS::EC2::SecurityGroupIngress
+      Properties:
+        GroupId:
+          Ref: ZookeeperSG
+        IpProtocol: tcp
+        FromPort: '2888'
+        ToPort: '2888'
+        SourceSecurityGroupId:
+          Ref: ZookeeperSG  
+
+    ############################################################################
+    ### ZookeeperSG - Zookeeper leader election over 3888
+    ############################################################################
+    3888tofmZookeper:
+      Type: AWS::EC2::SecurityGroupIngress
+      Properties:
+        GroupId:
+          Ref: ZookeeperSG
+        IpProtocol: tcp
+        FromPort: '3888'
+        ToPort: '3888'
+        SourceSecurityGroupId:
+          Ref: ZookeeperSG
+
+    ############################################################################
+    ### WebTierSG - Allow ephemeral port range from internal/private ELBs
+    ############################################################################
+    EphemeralPortsFromPrivateELBsToWebTierSG:
+      Type: AWS::EC2::SecurityGroupIngress
+      Properties:
+        GroupId:
+          Ref: WebTierSG
+        IpProtocol: tcp
+        FromPort: '32768'
+        ToPort: '61000'
+        SourceSecurityGroupId:
+          Ref: PrivateLoadBalancerSecurityGroupId

@@ -1,0 +1,101 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS Infrastructure Deployment for Cloudera Manager
+Parameters:
+  DeploymentPrefix:
+    Type: "String"
+    Description: "An optional prefix to use on resource names"
+  DeploymentSuffix:
+    Type: "String"
+    Description: "An optional suffix to use on resource names"
+  TeamTag:
+    Type: "String"
+  ClusterLauncherType:
+    AllowedValues:
+    - m4.xlarge
+    - m4.large
+    Default: m4.large
+    Description: Amazon EC2 instance type for the ClouderaManager Instance.
+    Type: String
+  KeyName:
+    Description: Name of an existing EC2 KeyPair. .
+    Type: AWS::EC2::KeyPair::KeyName
+  ProductSubnetIds:
+    Description: Public Subnet Id of the VPC.
+    Type: AWS::EC2::Subnet::Id
+  SecurityGroups:
+    Description: Public Secgroup for deployments
+    Type: AWS::EC2::SecurityGroup
+    Default: sg-82aad6f7
+  ImageId:
+    Type: String
+    Default: ami-00bb227a
+  HadoopRole:
+    Type: String
+  HadoopInstanceProfile:
+    Type:  AWS::IAM::InstanceProfile
+Resources:
+  ClouderaManagerInstance:
+    Type: AWS::EC2::Instance
+    Metadata:
+      AWS::CloudFormation::Init:
+        config
+    Properties:
+      KeyName:
+        Ref: KeyName
+      SecurityGroups:
+        Ref: SecurityGroups
+      ImageId:
+        Ref: ImageId
+      SourceDestCheck:
+        - "false"
+      IamInstanceProfile:
+        Ref: HadoopInstanceProfile
+      Tags:
+      - Key: Name
+        Value: ClouderaManager Instance
+      InstanceType:
+        Ref: ClusterLauncherType
+      UserData:
+        Fn::Base64:
+          Fn::Sub: |
+            #!/bin/bash
+            echo Disable SELINUX >> init_script.log
+            sudo sed -e 's/^SELINUX=enforcing/SELINUX=disabled/' -i /etc/sysconfig/selinux >> init_script.log
+            echo Turn swappiness to minimum >> init_script.log
+            sudo echo "vm.swappiness = 0" >> /etc/sysctl.conf
+            sudo echo "$(hostname -I) $(hostname -f) $(hostname -s)" >> /etc/hosts
+            sudo yum install -y wget
+            sudo iptables-save > /root/firewall.rules
+            sudo chkconfig iptables off
+            sudo cat <<EOF>>  /etc/yum.repos.d/cloudera-manager.repo
+            [cloudera-manager]
+            # Packages for Cloudera Manager, Version 5, on RedHat or CentOS 6 x86_64
+            name=Cloudera Manager
+            baseurl=https://archive.cloudera.com/cm5/redhat/6/x86_64/cm/5/
+            gpgkey =https://archive.cloudera.com/cm5/redhat/6/x86_64/cm/RPM-GPG-KEY-cloudera
+            gpgcheck = 1
+            EOF
+            sudo yum install oracle-j2sdk1.7 -y
+            sudo yum install cloudera-manager-daemons cloudera-manager-server
+            export JAVA_HOME=/usr/java/jdk1.7.0_67-cloudera
+            sudo wget https://archive.cloudera.com/cdh5/one-click-install/redhat/6/x86_64/cloudera-cdh-5-0.x86_64.rpm
+            sudo rpm --import https://archive.cloudera.com/cdh5/redhat/6/x86_64/cdh/RPM-GPG-KEY-cloudera
+            sudo yum --nogpgcheck localinstall /cloudera-cdh-5-0.x86_64.rpm -y
+            sudo yum install cloudera-manager-agent -y
+            sudo sed -i -e "s/^server_host=localhost/server_host=$(hostname -I)/" \
+                        -e "s/^# listening_ip=/listening_ip=$(hostname -I)/"  /etc/cloudera-scm-agent/config.ini
+            sudo service cloudera-scm-agent start
+            sudo yum install cloudera-manager-server-db-2 -y
+            sudo service cloudera-manager-server-db-2 start
+            sudo yum clean all
+            sudo yum install avro-tools crunch flume-ng hadoop-hdfs-fuse hadoop-hdfs-nfs3 hadoop-httpfs hadoop-kms hbase-solr hive-hbase hive-webhcat hue-beeswax hue-hbase hue-impala hue-pig hue-plugins hue-rdbms hue-search hue-spark hue-sqoop hue-zookeeper impala impala-shell kite kudu llama mahout oozie pig pig-udf-datafu search sentry solr-mapreduce spark-core spark-master spark-worker spark-history-server spark-python sqoop sqoop2 whirr -y
+            sudo service cloudera-scm-server start
+            sudo reboot
+Outputs:
+  ClusterLauncherEIP:
+    Description: ClouderaManager Server located in Public Subnet
+    Value:
+      Fn::GetAtt:
+      - ClouderaManagerInstance
+      - PublicIp

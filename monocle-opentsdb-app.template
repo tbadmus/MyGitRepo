@@ -1,0 +1,80 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Deploys OpenTSDB onto an existing ECS cluster"
+
+Parameters:
+  DeploymentPrefix:
+    Type: "String"
+    Description: "An optional prefix to use on resource names"
+
+  DeploymentSuffix:
+    Type: "String"
+    Description: "An optional suffix to use on resource names"
+
+  ECSCluster:
+    Type: "String"
+    Description: "ARN of ECS cluster to be used"
+
+  ECSServiceRole:
+    Type: "String"
+    Description: "ECS Service Role Name"
+
+  OpenTSDBTaskRole:
+    Type: "String"
+    Description: "OpenTSDB Service Role Name"
+
+  TargetGroupArn:
+    Type: "String"
+    Description: "ARN of ALB Targetgroup"
+
+  DockerImageURI:
+    Type: "String"
+    Description: "URI with tag for docker image to use in task definition"
+
+Resources:
+  OpenTSDBTaskDefinition:
+    Type: "AWS::ECS::TaskDefinition"
+    Properties:
+      ContainerDefinitions:
+      - Name: !Sub ${DeploymentPrefix}monocle-opentsdb${DeploymentSuffix}
+        Command:
+        - "/root/startup.sh"
+        MountPoints:
+        - SourceVolume: "var-log"
+          ContainerPath: "/var/log"
+        Cpu: "512"
+        Image: !Sub ${DockerImageURI}
+        Memory: "2048"
+        MemoryReservation: "2048"
+        PortMappings:
+        - ContainerPort: "8282"
+          HostPort: "0"
+          Protocol: "tcp"
+      TaskRoleArn: !Sub ${OpenTSDBTaskRole}
+      Volumes:
+      - Name: "var-log"
+
+  OpenTSDBService:
+    Type: "AWS::ECS::Service"
+    Properties:
+      Cluster: !Sub ${ECSCluster}
+      DeploymentConfiguration:
+        MinimumHealthyPercent: "50"
+        MaximumPercent: "200"
+      DesiredCount: "1"
+      LoadBalancers:
+      - TargetGroupArn:
+          Ref: TargetGroupArn
+        ContainerPort: "8282"
+        ContainerName: !Sub ${DeploymentPrefix}monocle-opentsdb${DeploymentSuffix}
+      Role: !Sub ${ECSServiceRole}
+      ServiceName: "opentsdb"
+      TaskDefinition: !Sub ${OpenTSDBTaskDefinition}
+
+Outputs:
+  OpenTSDBTaskDefinitionArn:
+    Description: "OpenTSDB Task Definition ARN"
+    Value: !Ref OpenTSDBTaskDefinition
+
+  OpenTSDBServiceArn:
+    Description: "OpenTSDB Service ARN"
+    Value: !Ref OpenTSDBService

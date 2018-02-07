@@ -1,0 +1,115 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Deploys Zookeeper onto an existing ECS cluster"
+
+Parameters:
+  AppShortName:
+    Type: "String"
+    Description: "Application Short Name"
+
+  DeploymentID:
+    Type: "String"
+    Description: "A unique deployment identifier"
+
+  DockerImageURI:
+    Type: "String"
+    Description: "URI with tag for docker image to use in task definition"
+
+  DesiredTaskCount:
+    Type: "String"
+    Description: "Number of docker container tasks to deploy"
+
+  ECSCluster:
+    Type: "String"
+    Description: "ARN of ECS cluster to be used"
+
+  HostedZoneID:
+    Type: "String"
+    Description: "Hosted Zone ID from monocle product stack"
+
+  SubDomainName:
+    Type: "String"
+    Description: "Sub Domain Name from monocle product stack"
+
+  S3Bucket:
+    Type: "String"
+    Description: "AWS S3 Bucket for application configuration data"
+
+  S3Prefix:
+    Type: "String"
+    Description: "AWS S3 Prefix for Kafka configuration data"
+
+  ZookeeperTaskRole:
+    Type: "String"
+    Description: "Zookeeper Task Role Name"
+
+Resources:
+  ZookeeperTaskDefinition:
+    Type: "AWS::ECS::TaskDefinition"
+    Properties:
+      ContainerDefinitions:
+        - Name: !Sub ${AppShortName}-zookeeper-${DeploymentID}
+          MountPoints:
+          - SourceVolume: "zk-data"
+            ContainerPath: "/var/lib/zookeeper/data"
+          - SourceVolume: "zk-txn-log"
+            ContainerPath: "/var/lib/zookeeper/log"
+          - SourceVolume: "zk-log"
+            ContainerPath: "/var/log/kafka"
+          Cpu: "1024"
+          Image: !Sub ${DockerImageURI}
+          Memory: "2048"
+          MemoryReservation: "1024"
+          Environment:
+          - Name: "HOSTED_ZONE_ID"
+            Value: !Sub ${HostedZoneID}
+          - Name: "DOMAIN_NAME"
+            Value: !Sub ${SubDomainName}
+          - Name: "ZOOKEEPER_CLIENT_PORT"
+            Value: "2181"
+          - Name: "ZOOKEEPER_SERVERS_PORT"
+            Value: "2888:3888"
+          - Name: "ZOOKEEPER_INIT_LIMIT"
+            Value: "10"
+          - Name: "ZOOKEEPER_SYNC_LIMIT"
+            Value: "5"
+          - Name: "ZOOKEEPER_TICK_TIME"
+            Value: "2000"
+          - Name: "KAFKA_OPTS"
+            Value: "-Djava.security.auth.login.config=/etc/kafka/secrets/zookeeper_jaas.conf -Dzookeeper.authProvider.1=org.apache.zookeeper.server.auth.SASLAuthenticationProvider"
+          - Name: "S3_BUCKET"
+            Value: !Sub ${S3Bucket}
+          - Name: "S3_PREFIX"
+            Value: !Sub ${S3Prefix}
+      NetworkMode: host
+      TaskRoleArn: !Sub ${ZookeeperTaskRole}
+      Volumes:
+        - Name: "zk-data"
+          Host:
+            SourcePath: "/opt/zk/zk-data"
+        - Name: "zk-txn-log"
+          Host:
+            SourcePath: "/opt/zk/zk-txn-log"
+        - Name: "zk-log"
+          Host:
+            SourcePath: "/opt/zk/zk-log"
+  ZookeeperService:
+    Type: "AWS::ECS::Service"
+    Properties:
+      Cluster: !Sub ${ECSCluster}
+      DeploymentConfiguration:
+        MinimumHealthyPercent: "100"
+        MaximumPercent: "200"
+      DesiredCount: !Sub ${DesiredTaskCount}
+      PlacementConstraints:
+      - Type: "distinctInstance"
+      ServiceName: "zookeeper"
+      TaskDefinition: !Sub ${ZookeeperTaskDefinition}
+
+Outputs:
+  ZookeeperTaskDefinitionARN:
+    Description: "Zookeeper Task Definition ARN"
+    Value: !Ref ZookeeperTaskDefinition
+
+  ZookeeperServiceARN:
+    Description: "Zookeeper Service ARN"
+    Value: !Ref ZookeeperService

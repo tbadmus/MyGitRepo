@@ -1,0 +1,108 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Creates Application Load Balancer"
+
+Parameters:
+  DeploymentPrefix:
+    Type: "String"
+    Description: "An optional prefix to use on resource names"
+
+  DeploymentSuffix:
+    Type: "String"
+    Description: "An optional suffix to use on resource names"
+
+  OwnerEmail:
+    Type: "String"
+    Description: "Owner email address"
+
+  TeamTag:
+    Type: "String"
+    Description: "The Team tag for the application"
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: "VPC Id"
+
+  PrivateSubnets:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: "A comma separated list of subnet IDs"
+
+  PrivateLoadBalancerSecurityGroupId:
+    Type: "String"
+    Description: "Public Load Balancer Security Group Id"
+
+  GrafanaSG:
+    Type: "String"
+    Description: "A Security Group"
+
+Resources:
+  GrafanaApplicationLoadBalancer:
+    Type: "AWS::ElasticLoadBalancingV2::LoadBalancer"
+    Properties:
+      Name: !Sub ${DeploymentPrefix}monocle-grafana${DeploymentSuffix}
+      Scheme: "internal"
+      Subnets: !Ref PrivateSubnets
+      SecurityGroups:
+      - !Sub '${PrivateLoadBalancerSecurityGroupId}'
+      - !Sub '${GrafanaSG}'
+      Tags:
+      - Key: "Name"
+        Value: "grafana-alb"
+      - Key: "Product"
+        Value: "monocle"
+      - Key: "Service"
+        Value: "grafana:alb"
+      - Key: "Owner"
+        Value: !Sub ${OwnerEmail}
+      - Key: "Team"
+        Value: !Sub ${TeamTag}
+      - Key: "Network"
+        Value: "private"
+
+  GrafanaALBListener:
+    Type: "AWS::ElasticLoadBalancingV2::Listener"
+    Properties:
+      DefaultActions:
+      - Type: "forward"
+        TargetGroupArn:
+          Ref: GrafanaTargetGroup
+      LoadBalancerArn:
+        Ref: GrafanaApplicationLoadBalancer
+      Port: "80"
+      Protocol: "HTTP"
+
+  GrafanaTargetGroup:
+    Type: "AWS::ElasticLoadBalancingV2::TargetGroup"
+    Properties:
+      Name: !Sub ${DeploymentPrefix}monocle-grafana${DeploymentSuffix}
+      Port: "3000"
+      Protocol: "HTTP"
+      VpcId: !Sub ${VpcId}
+      HealthCheckProtocol: "HTTP"
+      HealthCheckPath: "/login"
+      HealthyThresholdCount: "5"
+      UnhealthyThresholdCount: "2"
+      HealthCheckTimeoutSeconds: "5"
+      HealthCheckIntervalSeconds: "30"
+      Matcher:
+        HttpCode: "200"
+      Tags:
+      - Key: "Name"
+        Value: "grafana-tg"
+      - Key: "Product"
+        Value: "monocle"
+      - Key: "Service"
+        Value: "grafana:tg"
+      - Key: "Owner"
+        Value: !Sub ${OwnerEmail}
+      - Key: "Team"
+        Value: !Sub ${TeamTag}
+
+Outputs:
+  GrafanaApplicationLoadBalancer:
+    Value: !Sub ${GrafanaApplicationLoadBalancer}
+
+  GrafanaTargetGroup:
+    Value: !Sub ${GrafanaTargetGroup}
+
+  GrafanaDnsName:
+    Value: !GetAtt GrafanaApplicationLoadBalancer.DNSName

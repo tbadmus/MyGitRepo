@@ -1,0 +1,115 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Deploys OpenTSDB onto an existing ECS cluster"
+
+Parameters:
+  DeploymentPrefix:
+    Type: "String"
+    Description: "A unique deployment identifier"
+
+  DeploymentSuffix:
+    Type: "String"
+    Description: "A unique deployment identifier"
+
+  OwnerEmail:
+    Type: "String"
+    Description: "Owner email address"
+
+  TeamTag:
+    Type: "String"
+    Description: "The Team tag for the application"
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: "VPC Id"
+
+  PrivateELBSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: "A comma separated list of subnet IDs"
+
+  PrivateLoadBalancerSecurityGroupId:
+    Type: "String"
+    Description: "Private Load Balancer Security Group Id"
+
+Resources:
+  OpenTSDBApplicationLoadBalancer:
+    Type: "AWS::ElasticLoadBalancingV2::LoadBalancer"
+    Properties:
+      Name: !Sub ${DeploymentPrefix}monocle-opentsdb${DeploymentSuffix}
+      Scheme: "internal"
+      Subnets: !Ref PrivateELBSubnetIds
+      SecurityGroups:
+      - !Sub '${PrivateLoadBalancerSecurityGroupId}'
+      Type: "application"
+      Tags:
+      - Key: "Name"
+        Value: "opentsdb-alb"
+      - Key: "Product"
+        Value: "monocle"
+      - Key: "Service"
+        Value: "opentsdb:alb"
+      - Key: "Owner"
+        Value: !Sub ${OwnerEmail}
+      - Key: "Team"
+        Value: !Sub ${TeamTag}
+      - Key: "Network"
+        Value: "private"
+
+  OpenTSDBALBListener:
+    Type: "AWS::ElasticLoadBalancingV2::Listener"
+    Properties:
+      DefaultActions:
+      - Type: "forward"
+        TargetGroupArn:
+          Ref: OpenTSDBTargetGroup
+      LoadBalancerArn:
+        Ref: OpenTSDBApplicationLoadBalancer
+      Port: "8282"
+      Protocol: "HTTP"
+
+  OpenTSDBTargetGroup:
+    Type: "AWS::ElasticLoadBalancingV2::TargetGroup"
+    Properties:
+      Name: !Sub ${DeploymentPrefix}monocle-opentsdb${DeploymentSuffix}
+      Port: "8282"
+      Protocol: "HTTP"
+      VpcId: !Sub ${VpcId}
+      HealthCheckProtocol: "HTTP"
+      HealthCheckIntervalSeconds: "30"
+      HealthCheckTimeoutSeconds: "10"
+      HealthyThresholdCount: "5"
+      UnhealthyThresholdCount: "5"
+      HealthCheckPath: "/"
+      Matcher:
+        HttpCode: "200"
+      Tags:
+      - Key: "Name"
+        Value: "opentsdb-tg"
+      - Key: "Product"
+        Value: "monocle"
+      - Key: "Service"
+        Value: "opentsdb:tg"
+      - Key: "Owner"
+        Value: !Sub ${OwnerEmail}
+      - Key: "Team"
+        Value: !Sub ${TeamTag}
+
+Outputs:
+  OpenTSDBApplicationLoadBalancerArn:
+    Description: "OpenTSDB Application Load Balancer ARN"
+    Value: !Sub ${OpenTSDBApplicationLoadBalancer}
+
+  OpenTSDBApplicationLoadBalancerName:
+    Description: "OpenTSDB Application Load Balancer Name"
+    Value: !GetAtt OpenTSDBApplicationLoadBalancer.LoadBalancerName
+
+  OpenTSDBApplicationLoadBalancerDnsName:
+    Description: "OpenTSDB Application Load Balancer DNS Name"
+    Value: !GetAtt OpenTSDBApplicationLoadBalancer.DNSName
+
+  OpenTSDBTargetGroupArn:
+    Description: "OpenTSDB Target Group ARN"
+    Value: !Sub ${OpenTSDBTargetGroup}
+
+  OpenTSDBTargetGroupName:
+    Description: "OpenTSDB Target Group Name"
+    Value: !GetAtt OpenTSDBTargetGroup.TargetGroupName
